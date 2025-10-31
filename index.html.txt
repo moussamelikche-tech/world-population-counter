@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>عداد سكان العالم - مباشر (تقريبي)</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --accent:#60a5fa; --muted:#9aa8bd;
+      color-scheme: dark;
+    }
+    *{box-sizing:border-box;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
+    body{margin:0;min-height:100vh;background:linear-gradient(180deg,#071024 0%,#07172b 100%);display:flex;align-items:center;justify-content:center;padding:24px;color:#e6eef6}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:16px;padding:28px;max-width:760px;width:100%;box-shadow:0 10px 30px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0 0 8px 0;font-size:22px}
+    p.lead{margin:0 0 20px 0;color:var(--muted)}
+    .counter{display:flex;align-items:baseline;gap:14px}
+    .big{font-size:48px;font-weight:700;letter-spacing:-0.02em}
+    .small{font-size:14px;color:var(--muted)}
+    .meta{margin-top:18px;color:var(--muted);font-size:13px;display:flex;gap:12px;flex-wrap:wrap}
+    .btn{background:transparent;border:1px solid rgba(255,255,255,0.06);padding:8px 12px;border-radius:10px;color:var(--muted);cursor:pointer}
+    .note{margin-top:16px;color:#b9c6d6;font-size:13px}
+    .source{color:var(--accent);text-decoration:none}
+    .spark{height:8px;width:8px;border-radius:50%;background:var(--accent);display:inline-block;margin-left:8px;box-shadow:0 0 16px rgba(96,165,250,0.25)}
+    .loading{opacity:0.6}
+    @media (max-width:520px){ .big{font-size:34px} }
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <h1>عداد سكان العالم — تحديث لحظي (تقديري)</h1>
+    <p class="lead">صفحة بسيطة تجلب آخر بيانات سنوية من World Bank ثم تحسب التغير اللحظي وفق معدل النمو.</p>
+
+    <div class="counter">
+      <div>
+        <div id="population" class="big loading">جارٍ التحميل...</div>
+        <div id="delta" class="small">↑ +0.00 / ثانية — معدل نمو سنوي: -- %</div>
+      </div>
+      <div style="margin-left:auto;text-align:right">
+        <div class="small">المصدر: <a id="sourceLink" class="source" href="#" target="_blank">World Bank <span class="spark" title="متى ما حصل تحديث، هذا سيُحدَّث"></span></a></div>
+        <div id="lastUpdate" class="small" style="margin-top:6px">آخر بيانات لسنة: --</div>
+      </div>
+    </div>
+
+    <div class="meta">
+      <button id="reloadBtn" class="btn">جلب آخر البيانات</button>
+      <button id="useFallback" class="btn">استخدام قيم افتراضية (إذا فشل)</button>
+      <div style="margin-left:auto;color:var(--muted)">ملاحظة: عرض تقريبي يعتمد على نمذجة بسيطة</div>
+    </div>
+
+    <div class="note">
+      تنبيه: البيانات السنوية حقيقية، لكن الزيادة اللحظية مشتقّة من معدل النمو السنوي. للتشغيل المحلي فقط — يمكن رفعه على GitHub Pages لعرض مباشر.
+    </div>
+  </div>
+
+<script>
+(async function(){
+  const elPop = document.getElementById('population');
+  const elDelta = document.getElementById('delta');
+  const elLast = document.getElementById('lastUpdate');
+  const sourceLink = document.getElementById('sourceLink');
+  const reloadBtn = document.getElementById('reloadBtn');
+  const useFallbackBtn = document.getElementById('useFallback');
+
+  // Fallback values (إذا فشل API)
+  const FALLBACK = {
+    population: 8253927118,   // مثال رقمي
+    growth: 0.78,             // نسبة مئوية سنوية
+    year: 2024
+  };
+
+  // دوال مساعدة
+  function formatNumber(n){
+    // عرض بدون فواصل عشرية، مع فاصلات آلاف
+    return Math.floor(n).toLocaleString();
+  }
+
+  function startCounter(initialPop, annualGrowthPercent, dataYear){
+    let population = Number(initialPop);
+    const growthRate = Number(annualGrowthPercent); // نسبة مئوية سنوية
+    // النمو الصافي في الثانية (تقريب)
+    const secondsPerYear = 365 * 24 * 3600;
+    const incrementPerSecond = population * (growthRate / 100) / secondsPerYear;
+
+    // تحديث UI
+    elPop.classList.remove('loading');
+    elLast.textContent = `آخر بيانات متوفرة للسنة: ${dataYear}`;
+    sourceLink.href = 'https://data.worldbank.org/indicator/SP.POP.TOTL';
+
+    // عرض قيمة دلتا/ثانية
+    elDelta.textContent = `↑ +${incrementPerSecond.toFixed(5)} / ثانية — معدل نمو سنوي: ${growthRate}%`;
+
+    // زيادة كل 200ms لظهور سلاسة (يمكن ضبط)
+    const stepMs = 200;
+    const perTick = incrementPerSecond * (stepMs / 1000);
+
+    // إيقاف أي عداد سابق
+    if(window.__popInterval) clearInterval(window.__popInterval);
+
+    elPop.textContent = formatNumber(population);
+
+    window.__popInterval = setInterval(()=>{
+      population += perTick;
+      elPop.textContent = formatNumber(population);
+    }, stepMs);
+  }
+
+  async function fetchWorldBank(){
+    // نجلب آخر سنة متاحة لمؤشر السكان SP.POP.TOTL عن جميع البلدان (all) ونحدد السنة الأحدث عبر ال API
+    // ملاحظة: World Bank API يعيد صفحات؛ نجلب آخر قيمة لعام 2023/2024 إن وُجدت.
+    function wbFetch(url){
+      return fetch(url).then(r=>{
+        if(!r.ok) throw new Error('WB fetch failed');
+        return r.json();
+      });
+    }
+
+    // جلب آخر قيمة للسكان (indicator SP.POP.TOTL) للكل، سنة واحدة: نطلب page=1&pageSize=1&date=2023 مثلا
+    // لكن لأننا نريد أحدث سنة متاحة، سنجلب صفحة لسنة 2023 و2024 ثم نأخذ أحدث قيمة غير null
+    try{
+      // Get population by year for world aggregate: country code "WLD"
+      const popResp = await wbFetch('https://api.worldbank.org/v2/country/WLD/indicator/SP.POP.TOTL?format=json&per_page=10');
+      // popResp[1] هو مصفوفة القيم حسب السنوات (مصدر World Bank)
+      const popEntries = (popResp && popResp[1]) || [];
+      const latestPopEntry = popEntries.find(e => e.value !== null);
+      const popValue = latestPopEntry ? latestPopEntry.value : null;
+      const popYear = latestPopEntry ? latestPopEntry.date : null;
+
+      // Get growth rate SP.POP.GROW for WLD
+      const growResp = await wbFetch('https://api.worldbank.org/v2/country/WLD/indicator/SP.POP.GROW?format=json&per_page=10');
+      const growEntries = (growResp && growResp[1]) || [];
+      const latestGrowEntry = growEntries.find(e => e.value !== null);
+      const growthValue = latestGrowEntry ? latestGrowEntry.value : null;
+
+      if(popValue == null || growthValue == null){
+        throw new Error('World Bank returned null values');
+      }
+
+      return {
+        population: popValue,
+        growth: growthValue,
+        year: popYear
+      };
+    }catch(err){
+      console.warn('fetchWorldBank failed:', err);
+      throw err;
+    }
+  }
+
+  async function loadAndStart(useFallback=false){
+    elPop.classList.add('loading');
+    elPop.textContent = 'جارٍ التحميل...';
+    try{
+      if(useFallback){
+        startCounter(FALLBACK.population, FALLBACK.growth, FALLBACK.year);
+        return;
+      }
+      const data = await fetchWorldBank();
+      startCounter(data.population, data.growth, data.year);
+    }catch(e){
+      // فشل: عرض الخيارات للمستخدم
+      elPop.classList.remove('loading');
+      elPop.textContent = formatNumber(FALLBACK.population);
+      elDelta.textContent = `لا يمكن جلب البيانات من World Bank الآن. استخدمت قيماً افتراضية.`;
+      elLast.textContent = `سنة (افتراضية): ${FALLBACK.year}`;
+      sourceLink.href = '#';
+      console.error(e);
+    }
+  }
+
+  // روابط أزرار
+  reloadBtn.addEventListener('click',()=>loadAndStart(false));
+  useFallbackBtn.addEventListener('click',()=>loadAndStart(true));
+
+  // ابدأ التحميل عند فتح الصفحة
+  loadAndStart(false);
+
+})();
+</script>
+</body>
+</html>
